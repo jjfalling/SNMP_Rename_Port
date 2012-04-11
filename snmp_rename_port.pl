@@ -29,8 +29,7 @@ GetOptions
 	 "n=s" => \$opt_name, "name=s" => \$opt_name,
 	 "p=s" => \$opt_port, "port=s" => \$opt_port,
 	 "H=s" => \$opt_host, "hostname=s" => \$opt_host,
-	 "w=s" => \$opt_wcom, "wcommunity=s" => \$opt_wcom,
-	 "r=s" => \$opt_rcom, "rcommunity=s" => \$opt_rcom);
+	 "w=s" => \$opt_wcom, "wcommunity=s" => \$opt_wcom);
 	
 
 #validate input
@@ -41,7 +40,7 @@ print "
 
 This script can be used to rename a cisco port.
 
-Usage: $PROGNAME -H <host> -n alias -p port -r community -w community [-d] 
+Usage: $PROGNAME -H <host> -n alias -p port -w community [-d] 
 
 -h, --help
    Print this message
@@ -51,8 +50,6 @@ Usage: $PROGNAME -H <host> -n alias -p port -r community -w community [-d]
    Alias (name) of the port
 -p, --port = port
    Port to change (ex: FastEthernet1/0/2)
--r, --rcommunity=community
-   SNMPv1 read community
 -w, --wcommunity=community
    SNMPv1 write community
 -d, --debug
@@ -74,10 +71,7 @@ unless ($opt_port) {print "Port not specified\n"; exit (1)};
 my $requested_port = $opt_port;
 
 unless ($opt_wcom) {print "Write community not specified\n"; exit (1)};
-my $snmp_write_community = $opt_wcom;
-
-unless ($opt_rcom) {print "Read community not specified\n"; exit (1)};
-my $snmp_read_community = $opt_rcom;
+my $snmp_community = $opt_wcom;
 
 ########################################################################################
 
@@ -86,7 +80,7 @@ if ($opt_d) {print "**DEBUG: Attempting to find the requested port: \"$requested
 
 #walk the interface descriptions
 if ($opt_d) {print "**DEBUG: Walking IF-MIB::ifDescr so we have a list of interfaces (this may take some time...)\n";}
-@snmp_walk_out = &snmpwalk("$snmp_read_community\@$host","$ifdescr_oid");
+@snmp_walk_out = &snmpwalk("$snmp_community\@$host","$ifdescr_oid");
 my $snmp_walk_out_length = $#snmp_walk_out;
 unless ($snmp_walk_out_length) {print "ERROR: SNMP walk error, zero length array returned\n"; exit 1;}
 
@@ -112,17 +106,17 @@ if ($opt_d) {print "**DEBUG: Found object id for $requested_port\n";}
 
 #get the existing port alias, exit if fails
 if ($opt_d) {print "**DEBUG: Getting old alias for $requested_port\n";}
-my $old_port_alias = &snmpget("$snmp_read_community\@$host","$ifalias_oid.$port_number");
-unless ($old_port_alias) {print "\n\nERROR: could not get snmp value \n\n"; exit 1;}
+my $old_port_alias = &snmpget("$snmp_community\@$host","$ifalias_oid.$port_number");
+
 
 #set the new port alias, exit if fails
 if ($opt_d) {print "**DEBUG: Success, setting new alias for $requested_port\n";}
-my $snmp_set_status = &snmpset("$snmp_write_community\@$host","$ifalias_oid.$port_number",'string',"$new_name");
+my $snmp_set_status = &snmpset("$snmp_community\@$host","$ifalias_oid.$port_number",'string',"$new_name");
 unless ($snmp_set_status) {print "\n\nERROR: could not set snmp value \n\n"; exit 1;}
 
 #get the new port alias, exit if fails
 if ($opt_d) {print "**DEBUG: Success, confirming new alias for $requested_port\n";}
-my $new_port_alias = &snmpget("$snmp_read_community\@$host","$ifalias_oid.$port_number");
+my $new_port_alias = &snmpget("$snmp_community\@$host","$ifalias_oid.$port_number");
 unless ($new_port_alias) {print "\n\nERROR: could not get snmp value \n\n"; exit 1;}
 
 #if user requested debugging, give summary, otherwise exit with status of 0
