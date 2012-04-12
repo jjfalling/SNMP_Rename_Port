@@ -1,27 +1,42 @@
 #!/usr/bin/env perl
 #used to change the name of a cisco port. Or anything really that supports ifDescr and ifAlias
 
+use strict;
+use Data::Dumper;
 use warnings; 
-use SNMP_util;
-use SNMP_Session;
+use Net::SNMP;
 use Getopt::Long;
-use vars qw($opt_d $opt_h $opt_n $opt_p $opt_H $opt_w $opt_r $PROGNAME);
+use vars qw($opt_d $opt_h $opt_n $opt_p $opt_H $opt_w $PROGNAME);
 ########################################################################################
-#NOTES
-#exit codes are 0 ok, 1 not ok. No output is given if you dont specify debuging or an error occurs. 
-#This may need to change, who knows
+#NOTES:
+#Exit codes are 0 ok, 1 user error, 2 script error. Very little output is given if you don't 
+# specify debugging or an error occurs. This may need to change, who knows
 #
 #
 ########################################################################################
-#Define varriables
+#Define variables
 my $PROGNAME = "snmp_rename_port.pl";
-#IF-MIB::ifDescr.
-my $ifdescr_oid=".1.3.6.1.2.1.2.2.1.2";
-#IF-MIB::ifAlias.
-my $ifalias_oid=".1.3.6.1.2.1.31.1.1.1.18";
+
+#Define oids we are going to use:
+my %if_oids = (
+	'ifdescr'      => ".1.3.6.1.2.1.2.2.1.2",
+	'ifalias'      => ".1.3.6.1.2.1.31.1.1.1.18",
+);
+
+my $null_var; #Anything we don't care about but need a variable for some sort of task, use this
+my $opt_help;
+my $opt_d;
+my $opt_name;
+my $opt_port;
+my $opt_host;
+my $opt_wcom;
+my $port_number;
+my $value_inter;
+my $human_error;
+my $exit_request;
+my $human_status;
 
 ########################################################################################
-
 Getopt::Long::Configure('bundling');
 GetOptions
 	("h"   => \$opt_help, "help" => \$opt_help,
@@ -74,55 +89,106 @@ unless ($opt_wcom) {print "Write community not specified\n"; exit (1)};
 my $snmp_community = $opt_wcom;
 
 ########################################################################################
+#start new snmp session
+my($snmp,$snmp_error) = Net::SNMP->session(-hostname => $host,
+                                           -community => $snmp_community);
+                                           
+debugOutput("\n**DEBUGING IS ENABLED**\n");
+debugOutput("**DEBUG: Attempting to find the requested port: \"$requested_port\" and rename to: \"$new_name\", please stand by.....");
 
-if ($opt_d) {print "\n**DEBUGING IS ENABLED**\n";}
-if ($opt_d) {print "**DEBUG: Attempting to find the requested port: \"$requested_port\" and rename to: \"$new_name\", please stand by.....\n";}
 
 #walk the interface descriptions
-if ($opt_d) {print "**DEBUG: Walking IF-MIB::ifDescr so we have a list of interfaces (this may take some time...)\n";}
-@snmp_walk_out = &snmpwalk("$snmp_community\@$host","$ifdescr_oid");
-my $snmp_walk_out_length = $#snmp_walk_out;
-unless ($snmp_walk_out_length) {print "ERROR: SNMP walk error, zero length array returned\n"; exit 1;}
+debugOutput("**DEBUG: Walking IF-MIB::ifDescr so we have a list of interfaces (this may take some time...)");
+my $snmp_walk_out = $snmp->get_entries( -columns =>  [$if_oids{ifdescr}]);
+checkSNMPStatus("Couldn't poll device: ",2);
 
-if ($opt_d) {print "**DEBUG: Walking IF-MIB::ifDescr succeded, looking to see if $requested_port exists \n";}
+debugOutput("**DEBUG: Walking IF-MIB::ifDescr succeded, looking to see if $requested_port exists ");
 
-#grep for the requested port in the snmp walk array
-@grepres = grep /$requested_port\b/i, @snmp_walk_out; 
-my $grepres_length = $#grepres;
-if ($grepres_length != 0) {print "ERROR: Interface $requested_port not found\n"; exit 1;}
+#See if the requested interface exists
+LOOK_FOR_INTERFACE: while ( ($port_number,$value_inter) = each %$snmp_walk_out ) {
 
-if ($opt_d) {print "**DEBUG: Found $requested_port in the IF-MIB::ifDescr walk \n";}
+	#see if the current value from the hash matches
+    if ($value_inter eq $requested_port) {
+    	
+    	debugOutput("**DEBUG: Found $requested_port in the IF-MIB::ifDescr walk ");
+    	debugOutput("**DEBUG: Looking for object id for $requested_port");
+    	    	
+    	#lets get the port number, basically take the index and remove the oid. Also, chomping seems required for some other snmp things to work right
+    	$port_number =~ s/$if_oids{ifdescr}\.//;
+    	chomp($port_number);
+    	
+    	last LOOK_FOR_INTERFACE;
+    
+    }    
+    
+}
 
-#get the interger port number for the requested port
-if ($opt_d) {print "**DEBUG: Looking for object id for $requested_port\n";}
-$newval = $grepres[0];
-$newval =~ /^(\d+):(.*)$/;
-$port_number = $1;
-chomp($port_number);
+unless ($port_number) {print "ERROR: Interface $requested_port not found, check your spelling, syntax or reality and try again. \n"; exit 2;}
 
-#if interface was not found, exit
-unless ($port_number) {print "\n\nERROR: Interface not found! Check your input and try again \n\n"; exit 1;}
-if ($opt_d) {print "**DEBUG: Found object id for $requested_port\n";}
+debugOutput("**DEBUG: Found object id for $requested_port : $port_number");
+
+#we need to re-assign the ifalias value in the if_oid hash since we only now know the interface id. 
+my $ifalias_oid = $if_oids{ifalias};
+$if_oids{ifalias} = "$ifalias_oid.$port_number";
 
 #get the existing port alias, exit if fails
-if ($opt_d) {print "**DEBUG: Getting old alias for $requested_port\n";}
-my $old_port_alias = &snmpget("$snmp_community\@$host","$ifalias_oid.$port_number");
+debugOutput("**DEBUG: Getting old alias for $requested_port");
+my $old_port_alias_out = $snmp->get_request( -varbindlist => [ $if_oids{ifalias}]);
 
+#get the existing alias out of the hash and check if its empty
+($null_var,my $old_port_alias) = each %$old_port_alias_out;
+if ($opt_d) {checkSNMPStatus("ERROR: could not get old interface alias, trying to go on with out it...",)};
 
-#set the new port alias, exit if fails
-if ($opt_d) {print "**DEBUG: Success, setting new alias for $requested_port\n";}
-my $snmp_set_status = &snmpset("$snmp_community\@$host","$ifalias_oid.$port_number",'string',"$new_name");
-unless ($snmp_set_status) {print "\n\nERROR: could not set snmp value \n\n"; exit 1;}
+##set the new port alias, exit if fails
+debugOutput("**DEBUG: setting new alias for $requested_port");
+my $snmp_set_status = $snmp->set_request( -varbindlist =>  [$if_oids{ifalias}, OCTET_STRING, $new_name]);
+checkSNMPStatus("ERROR: could not set snmp value",2);
 
 #get the new port alias, exit if fails
-if ($opt_d) {print "**DEBUG: Success, confirming new alias for $requested_port\n";}
-my $new_port_alias = &snmpget("$snmp_community\@$host","$ifalias_oid.$port_number");
-unless ($new_port_alias) {print "\n\nERROR: could not get snmp value \n\n"; exit 1;}
+debugOutput("**DEBUG: confirming new alias for $requested_port");
+my $new_port_hash = $snmp->get_request( -varbindlist => [ $if_oids{ifalias}]);
 
-#if user requested debugging, give summary, otherwise exit with status of 0
-if ($opt_d) {print "\n**DEBUG: Old alias of $requested_port: $old_port_alias\n";}
-if ($opt_d) {print "**DEBUG: New alias of $requested_port: $new_port_alias\n\n";}
-if ($opt_d) {print "**DEBUG: DONE. Please confirm with the above output, but the alias should have been changed.\n\n";}
+#get the existing alias out of the hash and check if its empty
+($null_var,my $new_port_alias) = each %$new_port_hash;
+checkSNMPStatus("ERROR: could not confirm snmp value",2);
+
+##If user requested debugging, give summary
+debugOutput("\n**DEBUG: Old alias of $requested_port: $old_port_alias");
+debugOutput("**DEBUG: New alias of $requested_port: $new_port_alias\n\n");
+debugOutput("**DEBUG: DONE. Please confirm with the above output, but the alias should have been changed.\n");
+
+#Otherwise, if no debug was requested, say done and exit with status of 0
+unless ($opt_d) {print "Done. Old alias: $old_port_alias | New alias: $new_port_alias ";}
+
+########################################################################################
+#Functions!
+
+#This function will do the error checking and reporting when related to SNMP
+sub checkSNMPStatus {
+	$human_error = $_[0];
+	$exit_request = $_[1];
+	$snmp_error = $snmp->error();
+    
+    #check if there was an error, if so, print the requested message and the snmp error
+    if ($snmp_error) {
+		print "$human_error $snmp_error \n";
+
+		#check to see if the error should cause the script to exit, if so, exit with the requested code
+		if ($exit_request) {
+			exit $exit_request;
+		}
+	}
+}
+
+#This function will be used to give the user output, if they so desire
+sub debugOutput {
+	$human_status = $_[0];
+    if ($opt_d) {
+		print "$human_status \n";
+		
+	}
+}
 
 
+#Well shucks, we made it all the way down here with no errors. Guess we should exit without an error ;)
 exit 0;
