@@ -76,7 +76,7 @@ if ($opt_help) {
 
 print "
 
-This script can be used to rename a cisco port.
+This script can be used to rename a cisco port. Or anything supports ifDescr and ifAlias
 
 Usage: $PROGNAME -H <host> -n alias -p port -w community [-d] 
 
