@@ -25,16 +25,17 @@
 # ***************************************************************************
 
 use strict;
-use Data::Dumper;
 use warnings; 
 use Net::SNMP;
 use Getopt::Long;
+use Term::ANSIColor;
 use vars qw($opt_d $opt_h $opt_n $opt_p $opt_H $opt_w $PROGNAME);
 ########################################################################################
 #NOTES:
 #Exit codes are 0 ok, 1 user error, 2 script error. Very little output is given if you don't 
 # specify debugging or an error occurs. This may need to change, who knows
 #
+#Also, I used red text for any error that requires the user's attention
 #
 ########################################################################################
 #Define variables
@@ -76,7 +77,7 @@ if ($opt_help) {
 
 print "
 
-This script can be used to rename a cisco port. Or anything supports ifDescr and ifAlias
+This script can be used to rename a cisco port.
 
 Usage: $PROGNAME -H <host> -n alias -p port -w community [-d] 
 
@@ -91,24 +92,24 @@ Usage: $PROGNAME -H <host> -n alias -p port -w community [-d]
 -w, --wcommunity=community
    SNMPv1 write community
 -d, --debug
-   Enable debuging (Are you a human? Yes? Great! you will more then likely want to use this flag to see what is going on. Or not if you are utterly boring....)
+   Enable debugging (Are you a human? Yes? Great! you will more then likely want to use this flag to see what is going on. Or not if you are utterly boring....)
    
 ";
 exit (0);
 }
 
 
-unless ($opt_host) {print "Host name/address not specified\n"; exit (1)};
+unless ($opt_host) {print colored ['red'],"Host name/address not specified\n"; exit (1)};
 my $host = $1 if ($opt_host =~ /([-.A-Za-z0-9]+)/);
-unless ($host) {print "Invalid host: $opt_host\n"; exit (1)};
+unless ($host) {print colored ['red'],"Invalid host: $opt_host\n"; exit (1)};
 
-unless ($opt_name) {print "Port alias not specified\n"; exit (1)};
+unless ($opt_name) {print colored ['red'], "Port alias not specified\n"; exit (1)};
 my $new_name = $opt_name;
 
-unless ($opt_port) {print "Port not specified\n"; exit (1)};
+unless ($opt_port) {print colored ['red'],"Port not specified\n"; exit (1)};
 my $requested_port = $opt_port;
 
-unless ($opt_wcom) {print "Write community not specified\n"; exit (1)};
+unless ($opt_wcom) {print colored ['red'],"Write community not specified\n"; exit (1)};
 my $snmp_community = $opt_wcom;
 
 ########################################################################################
@@ -116,7 +117,7 @@ my $snmp_community = $opt_wcom;
 my($snmp,$snmp_error) = Net::SNMP->session(-hostname => $host,
                                            -community => $snmp_community);
                                            
-debugOutput("\n**DEBUGING IS ENABLED**\n");
+debugOutput("\n**DEBUGGING IS ENABLED**\n");
 debugOutput("**DEBUG: Attempting to find the requested port: \"$requested_port\" and rename to: \"$new_name\", please stand by.....");
 
 
@@ -125,7 +126,7 @@ debugOutput("**DEBUG: Walking IF-MIB::ifDescr so we have a list of interfaces (t
 my $snmp_walk_out = $snmp->get_entries( -columns =>  [$if_oids{ifdescr}]);
 checkSNMPStatus("Couldn't poll device: ",2);
 
-debugOutput("**DEBUG: Walking IF-MIB::ifDescr succeded, looking to see if $requested_port exists ");
+debugOutput("**DEBUG: Walking IF-MIB::ifDescr succeeded, looking to see if $requested_port exists ");
 
 #See if the requested interface exists
 LOOK_FOR_INTERFACE: while ( ($port_number,$value_inter) = each %$snmp_walk_out ) {
@@ -192,9 +193,9 @@ sub checkSNMPStatus {
 	$exit_request = $_[1];
 	$snmp_error = $snmp->error();
     
-    #check if there was an error, if so, print the requested message and the snmp error
+    #check if there was an error, if so, print the requested message and the snmp error. I used the color red to get the user's attention.
     if ($snmp_error) {
-		print "$human_error $snmp_error \n";
+		print colored ['red'], "$human_error $snmp_error \n";
 
 		#check to see if the error should cause the script to exit, if so, exit with the requested code
 		if ($exit_request) {
