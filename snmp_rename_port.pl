@@ -195,10 +195,10 @@ sub checkSNMPStatus {
     #check if there was an error, if so, print the requested message and the snmp error. I used the color red to get the user's attention.
     if ($snmp_error) {
 		print colored ['red'], "$human_error $snmp_error \n";
-
+		print color("reset");
+					
 		#check to see if the error should cause the script to exit, if so, exit with the requested code
 		if ($exit_request) {
-			print color("reset");
 			exit $exit_request;
 		}
 	}
@@ -215,5 +215,4 @@ sub debugOutput {
 
 
 #Well shucks, we made it all the way down here with no errors. Guess we should exit without an error ;)
-print color("reset");
 exit 0;
