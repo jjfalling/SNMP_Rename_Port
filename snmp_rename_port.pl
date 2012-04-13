@@ -98,18 +98,17 @@ Usage: $PROGNAME -H <host> -n alias -p port -w community [-d]
 exit (0);
 }
 
-
-unless ($opt_host) {print colored ['red'],"Host name/address not specified\n"; exit (1)};
+unless ($opt_host) {print colored ['red'],"Host name/address not specified\n"; print color("reset"); exit (1)};
 my $host = $1 if ($opt_host =~ /([-.A-Za-z0-9]+)/);
-unless ($host) {print colored ['red'],"Invalid host: $opt_host\n"; exit (1)};
+unless ($host) {print colored ['red'],"Invalid host: $opt_host\n"; print color("reset"); exit (1)};
 
-unless ($opt_name) {print colored ['red'], "Port alias not specified\n"; exit (1)};
+unless ($opt_name) {print colored ['red'], "Port alias not specified\n"; print color("reset"); exit (1)};
 my $new_name = $opt_name;
 
-unless ($opt_port) {print colored ['red'],"Port not specified\n"; exit (1)};
+unless ($opt_port) {print colored ['red'],"Port not specified\n"; print color("reset"); exit (1)};
 my $requested_port = $opt_port;
 
-unless ($opt_wcom) {print colored ['red'],"Write community not specified\n"; exit (1)};
+unless ($opt_wcom) {print colored ['red'],"Write community not specified\n"; print color("reset"); exit (1)};
 my $snmp_community = $opt_wcom;
 
 ########################################################################################
@@ -199,6 +198,7 @@ sub checkSNMPStatus {
 
 		#check to see if the error should cause the script to exit, if so, exit with the requested code
 		if ($exit_request) {
+			print color("reset");
 			exit $exit_request;
 		}
 	}
@@ -215,4 +215,5 @@ sub debugOutput {
 
 
 #Well shucks, we made it all the way down here with no errors. Guess we should exit without an error ;)
+print color("reset");
 exit 0;
