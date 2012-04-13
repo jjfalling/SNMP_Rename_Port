@@ -146,7 +146,7 @@ LOOK_FOR_INTERFACE: while ( ($port_number,$value_inter) = each %$snmp_walk_out )
     
 }
 
-unless ($port_number) {print "ERROR: Interface $requested_port not found, check your spelling, syntax or reality and try again. \n"; exit 2;}
+unless ($port_number) {print colored ['red'], "ERROR: Interface $requested_port not found, check your spelling, syntax or reality and try again. \n"; print color("reset"); exit 2;}
 
 debugOutput("**DEBUG: Found object id for $requested_port : $port_number");
 
@@ -176,7 +176,7 @@ my $new_port_hash = $snmp->get_request( -varbindlist => [ $if_oids{ifalias}]);
 checkSNMPStatus("ERROR: could not confirm snmp value",2);
 
 ##If user requested debugging, give summary
-debugOutput("\n**DEBUG: Old alias of $requested_port: $old_port_alias");
+debugOutput("\n**DEBUG: Old alias of $requested_port (blank means none was set): $old_port_alias");
 debugOutput("**DEBUG: New alias of $requested_port: $new_port_alias\n\n");
 debugOutput("**DEBUG: DONE. Please confirm with the above output, but the alias should have been changed.\n");
 
@@ -196,7 +196,6 @@ sub checkSNMPStatus {
     if ($snmp_error) {
 		print colored ['red'], "$human_error $snmp_error \n";
 		print color("reset");
-					
 		#check to see if the error should cause the script to exit, if so, exit with the requested code
 		if ($exit_request) {
 			exit $exit_request;
@@ -215,4 +214,5 @@ sub debugOutput {
 
 
 #Well shucks, we made it all the way down here with no errors. Guess we should exit without an error ;)
+print color("reset");
 exit 0;
